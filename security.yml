@@ -1,0 +1,120 @@
+name: DevSecOps Security Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+
+# IMPORTANT: no privileged pull_request_target event and no secrets for PR scans.
+permissions:
+  contents: read
+
+jobs:
+  pr-security-gate:
+    name: pr-security-gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DEVSECOPS_TOOL_DIR: ${{ runner.temp }}/devsecops-cli
+    steps:
+      # Both repositories must have the toolkit already present on main.
+      # The SCRIPT + POLICY execute only from the trusted base checkout.
+      - name: Checkout trusted baseline branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: baseline
+          persist-credentials: false
+
+      - name: Checkout candidate PR merge snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install trusted scanner requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r baseline/tools/devsecops/requirements.txt
+          python baseline/tools/devsecops/devsecops.py setup-tools
+          python baseline/tools/devsecops/devsecops.py doctor
+          python baseline/tools/devsecops/devsecops.py self-test
+
+      - name: Baseline security scan (collect only)
+        run: |
+          python baseline/tools/devsecops/devsecops.py scan \
+            --target baseline --out scan-results/base \
+            --policy baseline/tools/devsecops/security-policy.json \
+            --fail-on none --jobs 4
+
+      - name: PR security scan (collect only)
+        run: |
+          python baseline/tools/devsecops/devsecops.py scan \
+            --target candidate --out scan-results/head \
+            --policy baseline/tools/devsecops/security-policy.json \
+            --fail-on none --jobs 4
+
+      - name: PR Security Gate (only new / escalated findings)
+        run: |
+          python baseline/tools/devsecops/devsecops.py compare \
+            --baseline scan-results/base/report.json \
+            --current scan-results/head/report.json \
+            --policy baseline/tools/devsecops/security-policy.json \
+            --out scan-results/pr
+
+      - name: Upload sanitized PR reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-security-reports
+          path: scan-results/
+          retention-days: 7
+          if-no-files-found: warn
+
+  main-full-scan:
+    name: main-full-scan
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DEVSECOPS_TOOL_DIR: ${{ runner.temp }}/devsecops-cli
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install scanner requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r candidate/tools/devsecops/requirements.txt
+          python candidate/tools/devsecops/devsecops.py setup-tools
+          python candidate/tools/devsecops/devsecops.py doctor
+      - name: Main / scheduled full security scan
+        run: |
+          python candidate/tools/devsecops/devsecops.py scan \
+            --target candidate --out scan-results/main \
+            --policy candidate/tools/devsecops/security-policy.json \
+            --jobs 4
+      - name: Upload sanitized main reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-security-reports
+          path: scan-results/
+          retention-days: 7
+          if-no-files-found: warn

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "fail_on": "HIGH",
+  "unknown_behavior": "review",
+  "overrides": {
+    "IAC": {
+      "CKV_DOCKER_2": "LOW",
+      "CKV_DOCKER_3": "MEDIUM",
+      "CKV_K8S_21": "LOW",
+      "CKV_K8S_35": "MEDIUM",
+      "CKV_AWS_111": "HIGH",
+      "CKV_AWS_108": "HIGH",
+      "CKV_AWS_356": "HIGH",
+      "CKV_AZURE_189": "HIGH",
+      "CKV_GCP_25": "HIGH"
+    },
+    "SAST": {},
+    "SCA": {},
+    "SECRET": {}
+  }
+}

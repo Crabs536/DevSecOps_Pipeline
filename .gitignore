@@ -1,0 +1,27 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Scanner binaries
+.tools/
+
+# Generated security reports
+report/
+reports/
+scan-results/
+
+# Local secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Archives and temporary files
+*.zip
+*.rar
+.DS_Store
